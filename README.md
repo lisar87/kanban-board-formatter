@@ -69,11 +69,25 @@ you want to inspect it rather than just reformat it — each column and card
 also carries its own `line`/`column`, so downstream tooling can report
 errors against the original source too.
 
+## CLI
+
+```
+npm run build
+node dist/cli.js board.txt [more-boards.txt ...]
+```
+
+Formats each file in place and prints whether it changed. A file that's
+already in canonical form is reported as unchanged and not rewritten. If a
+file fails to parse, its error is printed to stderr (with the same
+line/column/snippet as the library) and the CLI exits non-zero, but it still
+processes the remaining files.
+
 ## Status
 
 Early skeleton. The parser handles the core format and the common failure
 modes (missing title, empty column/card names, duplicate columns, cards
-before any column, malformed markers). No CLI yet.
+before any column, malformed markers). The CLI formats files in place; it
+doesn't yet read card metadata (labels, due dates) or have a `--check` mode.
 
 ## License
 
