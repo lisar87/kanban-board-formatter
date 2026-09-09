@@ -31,6 +31,18 @@ with a caret pointing at the character — instead of a vague failure.
 A title line (`# Name`), one or more column headers (`## Name`), and cards
 (`- text`) under each column. Blank lines are ignored.
 
+A card can carry trailing metadata:
+
+```
+- Fix bug #123 @due:2026-09-15 @label:backend @label:urgent
+```
+
+`@due:YYYY-MM-DD` sets a due date (at most one per card); `@label:name` adds
+a label and can repeat. Both are optional. Anything else trailing the card
+text, including a bare `@mention`, is left alone as ordinary text — only
+the `@due:` and `@label:` prefixes are treated as markers, which is why
+`#123` above stays part of the text instead of being parsed as a label.
+
 ## Usage
 
 ```ts
@@ -84,10 +96,11 @@ processes the remaining files.
 
 ## Status
 
-Early skeleton. The parser handles the core format and the common failure
-modes (missing title, empty column/card names, duplicate columns, cards
-before any column, malformed markers). The CLI formats files in place; it
-doesn't yet read card metadata (labels, due dates) or have a `--check` mode.
+Early skeleton. The parser handles the core format, card metadata (due
+dates, labels), and the common failure modes (missing title, empty
+column/card names, duplicate columns, cards before any column, malformed
+markers, bad metadata). The CLI formats files in place; it doesn't yet have
+a `--check` mode, and there's no test suite yet.
 
 ## License
 

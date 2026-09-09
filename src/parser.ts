@@ -2,6 +2,8 @@ import { KanbanFormatError } from "./errors";
 
 export interface Card {
   text: string;
+  labels: string[];
+  dueDate: string | null;
   line: number;
   column: number;
 }
@@ -31,6 +33,10 @@ export interface Board {
  *
  *   ## Another Column
  *   - Card text
+ *
+ * A card's text can carry trailing metadata: "@due:2026-09-15" sets a due
+ * date and "@label:name" adds a label (repeatable). Anything else trailing
+ * the card, including a bare "@" token, is treated as ordinary text.
  *
  * Every failure mode reports the exact line and column so a bad paste from
  * a tool that isn't quite consistent about spacing is easy to locate by hand.
@@ -116,12 +122,72 @@ export function parseBoard(source: string): Board {
           rawLine
         );
       }
-      const text = content === "-" ? "" : content.slice(2).trim();
-      const textColumn = column + 2;
+
+      const bodyRaw = content === "-" ? "" : content.slice(2);
+      const bodyColumn = column + 2;
+      const tokens = [...bodyRaw.matchAll(/\S+/g)];
+
+      const labels: string[] = [];
+      let dueDate: string | null = null;
+      let metadataStart = tokens.length;
+
+      for (let t = tokens.length - 1; t >= 0; t--) {
+        const token = tokens[t]!;
+        const value = token[0];
+        const tokenColumn = bodyColumn + token.index!;
+
+        const dueMatch = /^@due:(.*)$/.exec(value);
+        if (dueMatch) {
+          if (dueDate !== null) {
+            throw new KanbanFormatError(
+              "card already has a due date",
+              { line: lineNumber, column: tokenColumn },
+              rawLine
+            );
+          }
+          const dateValue = dueMatch[1]!;
+          if (!isValidDate(dateValue)) {
+            throw new KanbanFormatError(
+              `due date "${dateValue}" must look like YYYY-MM-DD`,
+              { line: lineNumber, column: tokenColumn },
+              rawLine
+            );
+          }
+          dueDate = dateValue;
+          metadataStart = t;
+          continue;
+        }
+
+        const labelMatch = /^@label:(.*)$/.exec(value);
+        if (labelMatch) {
+          const labelValue = labelMatch[1]!;
+          if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(labelValue)) {
+            throw new KanbanFormatError(
+              `label "${labelValue}" may only contain letters, numbers, "-", and "_"`,
+              { line: lineNumber, column: tokenColumn },
+              rawLine
+            );
+          }
+          labels.unshift(labelValue);
+          metadataStart = t;
+          continue;
+        }
+
+        // Anything else trailing the card, including a bare "@something", is
+        // part of the card text rather than metadata: only the "@due:" and
+        // "@label:" prefixes are unambiguous enough to treat as a marker.
+        break;
+      }
+
+      const textTokens = tokens.slice(0, metadataStart);
+      const text = textTokens.map((m) => m[0]).join(" ");
+      const textColumn = textTokens.length > 0 ? bodyColumn + textTokens[0]!.index! : bodyColumn;
+
       if (text.length === 0) {
         throw new KanbanFormatError("card text cannot be empty", { line: lineNumber, column: textColumn }, rawLine);
       }
-      currentColumn.cards.push({ text, line: lineNumber, column });
+
+      currentColumn.cards.push({ text, labels, dueDate, line: lineNumber, column });
       continue;
     }
 
@@ -159,6 +225,18 @@ export function parseBoard(source: string): Board {
   return { title: title.value, line: title.line, column: title.column, columns };
 }
 
+// Checks month/day are in range but doesn't account for month length or leap
+// years; good enough to catch typos like "2026-13-40" without a date library.
+function isValidDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return false;
+  }
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+
 /**
  * Re-serializes a parsed board into a canonical form: single-space header
  * markers, one blank line between sections, trimmed card text, trailing
@@ -172,7 +250,14 @@ export function formatBoard(source: string): string {
     lines.push("");
     lines.push(`## ${column.name}`);
     for (const card of column.cards) {
-      lines.push(`- ${card.text}`);
+      const parts = [`- ${card.text}`];
+      if (card.dueDate !== null) {
+        parts.push(`@due:${card.dueDate}`);
+      }
+      for (const label of card.labels) {
+        parts.push(`@label:${label}`);
+      }
+      lines.push(parts.join(" "));
     }
   }
 
