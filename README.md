@@ -94,13 +94,25 @@ file fails to parse, its error is printed to stderr (with the same
 line/column/snippet as the library) and the CLI exits non-zero, but it still
 processes the remaining files.
 
+## Tests
+
+```
+npm test
+```
+
+Compiles with `tsc` and runs the tests with Node's built-in test runner
+(`node --test`), so there's nothing to install. `src/parser.test.ts` checks
+the line/column reported for every failure mode above, and that
+`formatBoard` is idempotent and actually normalizes messy input.
+
 ## Status
 
 Early skeleton. The parser handles the core format, card metadata (due
 dates, labels), and the common failure modes (missing title, empty
 column/card names, duplicate columns, cards before any column, malformed
-markers, bad metadata). The CLI formats files in place; it doesn't yet have
-a `--check` mode, and there's no test suite yet.
+markers, bad metadata), with a test suite covering the error position for
+each one. The CLI formats files in place; it doesn't yet have a `--check`
+mode.
 
 ## License
 
