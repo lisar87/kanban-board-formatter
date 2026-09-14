@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert = require("node:assert/strict");
-import { parseBoard, formatBoard } from "./parser";
+import { parseBoard, formatBoard, serializeBoard } from "./parser";
 import { KanbanFormatError } from "./errors";
 
 function assertFails(
@@ -188,4 +188,45 @@ test("formatBoard is a no-op on its own output", () => {
   const once = formatBoard(messy);
   const twice = formatBoard(once);
   assert.equal(once, twice);
+});
+
+test("a well-formed board has no warnings", () => {
+  const board = parseBoard("# Board\n\n## To Do\n- Task\n");
+  assert.deepEqual(board.warnings, []);
+});
+
+test("a tab-indented line still parses and reports a warning", () => {
+  const board = parseBoard("# Board\n\n## To Do\n\t- Task\n");
+  assert.equal(board.columns[0]!.cards[0]!.text, "Task");
+  assert.equal(board.warnings.length, 1);
+  assert.equal(board.warnings[0]!.line, 4);
+  assert.equal(board.warnings[0]!.column, 1);
+  assert.ok(board.warnings[0]!.message.includes("indented with a tab"));
+});
+
+test("tab indentation only warns on lines that actually use one", () => {
+  const board = parseBoard("# Board\n\n## To Do\n- Task one\n\t- Task two\n- Task three\n");
+  assert.equal(board.warnings.length, 1);
+  assert.equal(board.warnings[0]!.line, 5);
+});
+
+test("CRLF line endings still parse and report a single warning", () => {
+  const board = parseBoard("# Board\r\n\r\n## To Do\r\n- Task\r\n");
+  assert.equal(board.columns[0]!.cards[0]!.text, "Task");
+  assert.equal(board.warnings.length, 1);
+  assert.equal(board.warnings[0]!.line, 1);
+  assert.ok(board.warnings[0]!.message.includes("CRLF"));
+});
+
+test("bare CR line endings still parse and report a single warning", () => {
+  const board = parseBoard("# Board\r\r## To Do\r- Task\r");
+  assert.equal(board.columns[0]!.cards[0]!.text, "Task");
+  assert.equal(board.warnings.length, 1);
+  assert.equal(board.warnings[0]!.line, 1);
+  assert.ok(board.warnings[0]!.message.includes("bare CR"));
+});
+
+test("serializeBoard normalizes a parsed board the same way formatBoard does", () => {
+  const board = parseBoard("# Board\r\n\r\n## To Do\r\n-   Task   \r\n");
+  assert.equal(serializeBoard(board), "# Board\n\n## To Do\n- Task\n");
 });

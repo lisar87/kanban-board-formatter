@@ -76,10 +76,17 @@ Fix the input and `formatBoard` returns a canonical string: single-space
 header markers, trimmed card text, one blank line between sections, and a
 trailing newline. Running it twice on its own output is a no-op.
 
-`parseBoard` returns the parsed structure (`Board { title, columns }`) if
-you want to inspect it rather than just reformat it — each column and card
+`parseBoard` returns the parsed structure (`Board { title, columns, warnings }`)
+if you want to inspect it rather than just reformat it — each column and card
 also carries its own `line`/`column`, so downstream tooling can report
 errors against the original source too.
+
+Tab-indented lines and CRLF (or bare CR) line endings parse without error —
+indentation is trimmed and any line ending is accepted — but both are
+unusual enough for this format that they show up in `board.warnings` instead
+of being silently swallowed. Each warning carries the same `message` /
+`line` / `column` shape as an error, just non-fatal: parsing still succeeds
+and `formatBoard` still normalizes the output (to no indentation and LF).
 
 ## CLI
 
@@ -92,7 +99,9 @@ Formats each file in place and prints whether it changed. A file that's
 already in canonical form is reported as unchanged and not rewritten. If a
 file fails to parse, its error is printed to stderr (with the same
 line/column/snippet as the library) and the CLI exits non-zero, but it still
-processes the remaining files.
+processes the remaining files. Warnings (tab indentation, CRLF/CR line
+endings) are printed to stderr too, but don't affect the exit code or stop
+the file from being formatted.
 
 ## Tests
 
@@ -108,11 +117,11 @@ the line/column reported for every failure mode above, and that
 ## Status
 
 Early skeleton. The parser handles the core format, card metadata (due
-dates, labels), and the common failure modes (missing title, empty
-column/card names, duplicate columns, cards before any column, malformed
-markers, bad metadata), with a test suite covering the error position for
-each one. The CLI formats files in place; it doesn't yet have a `--check`
-mode.
+dates, labels), the common failure modes (missing title, empty column/card
+names, duplicate columns, cards before any column, malformed markers, bad
+metadata) with a test suite covering the error position for each one, and
+non-fatal warnings for tab indentation and CRLF/CR line endings. The CLI
+formats files in place; it doesn't yet have a `--check` mode.
 
 ## License
 

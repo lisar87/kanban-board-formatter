@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from "fs";
-import { formatBoard } from "./parser";
+import { parseBoard, serializeBoard } from "./parser";
 import { KanbanFormatError } from "./errors";
 
 function usage(): string {
@@ -10,6 +10,8 @@ function usage(): string {
 /**
  * Formats each file in place. Files that already match the canonical output
  * are left untouched (and not rewritten, so mtimes don't churn on a no-op run).
+ * Non-fatal issues (tab indentation, CRLF/CR line endings) are printed as
+ * warnings but don't affect the exit code or stop the file from formatting.
  */
 function run(paths: string[]): number {
   if (paths.length === 0) {
@@ -30,9 +32,9 @@ function run(paths: string[]): number {
       continue;
     }
 
-    let formatted: string;
+    let board;
     try {
-      formatted = formatBoard(source);
+      board = parseBoard(source);
     } catch (err) {
       if (err instanceof KanbanFormatError) {
         process.stderr.write(`${path}: ${err.message}\n`);
@@ -41,6 +43,12 @@ function run(paths: string[]): number {
       }
       throw err;
     }
+
+    for (const warning of board.warnings) {
+      process.stderr.write(`${path}: warning: ${warning.message} (line ${warning.line}, column ${warning.column})\n`);
+    }
+
+    const formatted = serializeBoard(board);
 
     if (formatted === source) {
       process.stdout.write(`${path}: unchanged\n`);

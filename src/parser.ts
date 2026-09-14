@@ -20,6 +20,13 @@ export interface Board {
   line: number;
   column: number;
   columns: Column[];
+  warnings: Warning[];
+}
+
+export interface Warning {
+  message: string;
+  line: number;
+  column: number;
 }
 
 /**
@@ -40,18 +47,41 @@ export interface Board {
  *
  * Every failure mode reports the exact line and column so a bad paste from
  * a tool that isn't quite consistent about spacing is easy to locate by hand.
+ *
+ * Tab-indented lines and CRLF/CR line endings parse fine (indentation is
+ * trimmed and any line ending is accepted) but are unusual enough for this
+ * format that they're reported back as non-fatal `warnings` rather than
+ * silently swallowed.
  */
 export function parseBoard(source: string): Board {
   const lines = source.split(/\r\n|\r|\n/);
+  const lineEndings = source.match(/\r\n|\r|\n/g) ?? [];
 
   let title: { value: string; line: number; column: number } | null = null;
   let currentColumn: Column | null = null;
   const columns: Column[] = [];
   const columnLineByKey = new Map<string, number>();
+  const warnings: Warning[] = [];
+  let sawForeignLineEnding = false;
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i] ?? "";
     const lineNumber = i + 1;
+
+    if (!sawForeignLineEnding) {
+      const ending = lineEndings[i];
+      if (ending === "\r\n" || ending === "\r") {
+        warnings.push({
+          message:
+            ending === "\r\n"
+              ? "input uses CRLF line endings; formatted output uses LF"
+              : "input uses bare CR line endings; formatted output uses LF",
+          line: lineNumber,
+          column: rawLine.length + 1,
+        });
+        sawForeignLineEnding = true;
+      }
+    }
 
     if (rawLine.trim().length === 0) {
       continue;
@@ -59,6 +89,16 @@ export function parseBoard(source: string): Board {
 
     const content = rawLine.trimStart();
     const column = rawLine.length - content.length + 1;
+
+    const leadingWhitespace = rawLine.slice(0, column - 1);
+    const tabIndex = leadingWhitespace.indexOf("\t");
+    if (tabIndex !== -1) {
+      warnings.push({
+        message: "line is indented with a tab; leading whitespace is stripped when formatting",
+        line: lineNumber,
+        column: tabIndex + 1,
+      });
+    }
 
     if (title === null) {
       const match = /^#\s+(.*)$/.exec(content);
@@ -222,7 +262,7 @@ export function parseBoard(source: string): Board {
     );
   }
 
-  return { title: title.value, line: title.line, column: title.column, columns };
+  return { title: title.value, line: title.line, column: title.column, columns, warnings };
 }
 
 // Checks month/day are in range but doesn't account for month length or leap
@@ -240,10 +280,10 @@ function isValidDate(value: string): boolean {
 /**
  * Re-serializes a parsed board into a canonical form: single-space header
  * markers, one blank line between sections, trimmed card text, trailing
- * newline. Running this twice on its own output is a no-op.
+ * newline (LF, regardless of what line endings the source used). Running
+ * this twice on its own output is a no-op.
  */
-export function formatBoard(source: string): string {
-  const board = parseBoard(source);
+export function serializeBoard(board: Board): string {
   const lines: string[] = [`# ${board.title}`];
 
   for (const column of board.columns) {
@@ -262,4 +302,9 @@ export function formatBoard(source: string): string {
   }
 
   return lines.join("\n") + "\n";
+}
+
+/** Parses `source` and re-serializes it in one step; see `parseBoard` and `serializeBoard`. */
+export function formatBoard(source: string): string {
+  return serializeBoard(parseBoard(source));
 }
